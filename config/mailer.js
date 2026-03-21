@@ -1,6 +1,46 @@
-const sgMail = require("@sendgrid/mail");
+const axios = require("axios");
+require("dotenv").config();
 
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+const transporter = {
+  sendMail: async (options) => {
+    try {
+      const response = await axios.post(
+        "https://api.brevo.com/v3/smtp/email",
+        {
+          sender: { name: "CityCare", email: "gaoussouthiero04@gmail.com" },
+          to: [{ email: options.to }],
+          subject: options.subject,
+          htmlContent: options.html || options.text,
+        },
+        {
+          headers: {
+            "api-key": process.env.BREVO_API_KEY,
+            "Content-Type": "application/json",
+          },
+        },
+      );
+      return response.data;
+    } catch (error) {
+      console.error(
+        "❌ Erreur Brevo :",
+        error.response ? error.response.data : error.message,
+      );
+      throw error;
+    }
+  },
+  verify: (callback) => {
+    if (process.env.BREVO_API_KEY) {
+      console.log("✅ API Brevo prête pour l'envoi 📧");
+      callback(null, true);
+    } else {
+      callback(new Error("Clé API Brevo manquante"), null);
+    }
+  },
+};
 
+// Vérification au démarrage
+transporter.verify((error) => {
+  if (error) console.log(error.message);
+});
 
-module.exports = sgMail;
+module.exports = transporter;

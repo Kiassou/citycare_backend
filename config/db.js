@@ -6,26 +6,27 @@ const pool = mysql.createPool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  port: process.env.DB_PORT || 15825, // Port par défaut d'Aiven
+  port: process.env.DB_PORT,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
-  // --- AJOUT CRUCIAL POUR AIVEN/RENDER ---
+  
+  // SSL est obligatoire pour Aiven
+
   ssl: {
-    rejectUnauthorized: false, // Permet la connexion sécurisée sur le Cloud
+    rejectUnauthorized: false,
   },
 });
 
 const db = pool.promise();
 
-// Test de connexion amélioré pour voir les erreurs réelles
 db.getConnection()
   .then((conn) => {
-    console.log("Connexion MySQL réussie (Mode Promise) ✅");
-    conn.release(); // Libère la connexion immédiatement
+    console.log("🚀 Nouvelle connexion MySQL réussie ! ✅");
+    conn.release();
   })
   .catch((err) => {
-    console.error("Erreur de connexion MySQL ❌ :", err.message);
+    console.error("❌ Erreur de connexion :", err.message);
   });
 
 module.exports = db;
