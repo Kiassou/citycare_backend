@@ -2,18 +2,23 @@ const mysql = require("mysql2");
 require("dotenv").config();
 
 const pool = mysql.createPool({
-  host: process.env.DB_HOST,      // Sera remplacé par la valeur de Render
-  user: process.env.DB_USER,      // Souvent 'avnadmin'
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,  // Souvent 'defaultdb'
-  port: process.env.DB_PORT || 15825,
+  database: process.env.DB_NAME,
+  port: parseInt(process.env.DB_PORT) || 15825,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  // --- CONFIGURATION SSL OBLIGATOIRE POUR AIVEN ---
   ssl: {
-    rejectUnauthorized: false,    // OBLIGATOIRE pour Aiven
-  },
+    rejectUnauthorized: false
+  }
 });
 
 const db = pool.promise();
 
+// Test de connexion
 db.getConnection()
   .then((conn) => {
     console.log("Connexion MySQL réussie (Aiven Cloud) ✅");
