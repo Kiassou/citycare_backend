@@ -154,8 +154,8 @@ exports.forgotPassword = async (req, res) => {
     const msg = {
       to: email,
       subject: "Nouveau mot de passe - CityCare 🔐",
-      text: `Bonjour, votre mot de passe temporaire est : ${newPassword}`,
-      html: `<b>Bonjour,</b><br><p>Votre nouveau mot de passe temporaire est : <strong style="color: #1A73B8;">${newPassword}</strong></p>`,
+      text: `Bonjour ${prenom}, votre mot de passe temporaire est : ${newPassword}. Connectez-vous et modifiez-le rapidement.`,
+      html: `<b>Bonjour ${prenom},</b><br><p>Votre nouveau mot de passe temporaire est : <strong style="color: #1A73B8;">${newPassword}</strong>. Connectez-vous et modifiez-le rapidement.</p>`,
     };
 
     // CORRECTION ICI : mailer.sendMail au lieu de mailer.send
