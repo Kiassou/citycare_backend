@@ -2,24 +2,31 @@ const mysql = require("mysql2");
 require("dotenv").config();
 
 const pool = mysql.createPool({
-  host: "mysql-23d58072-citycare.c.aivencloud.com",
-  user: "avnadmin",
-  password: "AVNS_tEEbVJZ7TmkBkDuTEHC",
-  database: "defaultdb",
-  port: 15825,
-  ssl: { rejectUnauthorized: false }
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER || "avnadmin",
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME || "defaultdb",
+  port: parseInt(process.env.DB_PORT) || 15825,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  // SSL est obligatoire pour Aiven
+  ssl: {
+    rejectUnauthorized: false
+  },
+  // On force IPv4 pour éviter les soucis réseau de Render
+  family: 4 
 });
 
 const db = pool.promise();
 
-// Test de connexion
 db.getConnection()
   .then((conn) => {
-    console.log("Connexion MySQL réussie (Aiven Cloud) ✅");
+    console.log("🚀 Nouvelle connexion MySQL réussie ! ✅");
     conn.release();
   })
   .catch((err) => {
-    console.error("Erreur de connexion MySQL ❌ :", err.message);
+    console.error("❌ Erreur de connexion :", err.message);
   });
 
 module.exports = db;
