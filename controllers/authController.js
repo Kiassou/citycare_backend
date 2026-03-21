@@ -2,7 +2,7 @@ const db = require("../config/db");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const mailer = require("../config/mailer");
+const mailer = require("../config/transporter"); // Vérifie bien que le nom du fichier est correct
 
 // --- 1. INSCRIPTION ---
 exports.register = async (req, res) => {
@@ -12,7 +12,7 @@ exports.register = async (req, res) => {
     // Vérifier si l'utilisateur existe déjà
     const [existingUser] = await db.query(
       "SELECT * FROM users WHERE email = ? OR username = ?",
-      [email, username],
+      [email, username]
     );
 
     if (existingUser.length > 0) {
@@ -27,7 +27,7 @@ exports.register = async (req, res) => {
 
     // Insertion (rôle citoyen par défaut)
     const sql = `INSERT INTO users (nom, prenom, username, telephone, email, password, role) 
-                     VALUES (?, ?, ?, ?, ?, ?, 'citoyen')`;
+                 VALUES (?, ?, ?, ?, ?, ?, 'citoyen')`;
 
     await db.query(sql, [
       nom,
@@ -41,7 +41,6 @@ exports.register = async (req, res) => {
     // Envoi de l'email de bienvenue
     const msg = {
       to: email,
-      from: "gaoussouthiero04@gmail.com",
       subject: "Bienvenue sur CityCare ! 🏙️",
       html: `
       <div style="font-family: Arial, sans-serif; border: 1px solid #eee; padding: 20px; border-radius: 10px; max-width: 500px;">
@@ -50,24 +49,16 @@ exports.register = async (req, res) => {
           <p>Ensemble, agissons pour une ville plus propre et plus sûre.</p>
           <hr style="border: none; border-top: 1px solid #eee;">
           <p style="font-size: 12px; color: #777;">Ceci est un message automatique de la part de l'équipe CityCare.</p>
-      </div>
-  `,
+      </div>`,
     };
 
-    // 1. Envoi bloquant avant la réponse (optionnel)
-    await mailer.send(msg).catch((err) => {
+    // Envoi via notre nouveau système Brevo
+    await mailer.sendMail(msg).catch((err) => {
       console.error("Erreur envoi email bienvenue:", err);
     });
 
     res.status(201).json({ message: "Inscription réussie !" });
 
-    // 2. En arrière‑plan (si tu veux garder cette logique)
-    mailer.send(msg).catch((err) => {
-      console.error(
-        "Erreur envoi email bienvenue (arrière-plan):",
-        err.message,
-      );
-    });
   } catch (err) {
     console.error("Erreur Inscription :", err);
     if (!res.headersSent) {
@@ -76,33 +67,22 @@ exports.register = async (req, res) => {
   }
 };
 
+// --- 2. CONNEXION ---
 exports.login = async (req, res) => {
   const { username, password } = req.body;
 
   console.log("🚀 Tentative de connexion pour :", username);
 
   try {
-    const result = await db.query("SELECT * FROM users WHERE username = ?", [
-      username,
-    ]);
-
-    // On extrait les lignes (rows) selon la config de ton driver mysql2
-    const rows = Array.isArray(result[0]) ? result[0] : result;
+    const [rows] = await db.query("SELECT * FROM users WHERE username = ?", [username]);
 
     if (!rows || rows.length === 0) {
       console.log("❌ Utilisateur non trouvé en BDD");
       return res.status(404).json({ message: "Utilisateur non trouvé" });
     }
 
-    // ON DÉFINIT 'user' ICI pour qu'il soit accessible partout dans le bloc try
     const user = rows[0];
-    console.log(
-      "✅ Utilisateur trouvé :",
-      user.username,
-      " | Rôle :",
-      user.role,
-    );
-
+    
     // Comparaison du mot de passe
     const isMatch = await bcrypt.compare(password.trim(), user.password.trim());
 
@@ -113,7 +93,7 @@ exports.login = async (req, res) => {
     const token = jwt.sign(
       { id: user.id, role: user.role },
       process.env.JWT_SECRET || "secret",
-      { expiresIn: "1d" },
+      { expiresIn: "1d" }
     );
 
     res.json({
@@ -147,37 +127,30 @@ exports.forgotPassword = async (req, res) => {
     // 2. Mise à jour en base de données
     const [result] = await db.query(
       "UPDATE users SET password = ? WHERE email = ?",
-      [hashedPassword, email],
+      [hashedPassword, email]
     );
 
-    // Si aucune ligne n'est modifiée, l'email n'existe pas
     if (result.affectedRows === 0) {
-      return res
-        .status(404)
-        .json({ message: "Cet email n'existe pas dans notre base." });
+      return res.status(404).json({ message: "Cet email n'existe pas dans notre base." });
     }
 
-    // 3. Réponse immédiate au client (pour arrêter le spinner sur l'appli)
-    res.json({
-      message: "Si cet email existe, un nouveau mot de passe a été envoyé.",
-    });
+    // 3. Réponse immédiate au client
+    res.json({ message: "Si cet email existe, un nouveau mot de passe a été envoyé." });
 
-    // 4. Envoi de l'email en arrière-plan (sans await pour ne pas faire attendre l'utilisateur)
+    // 4. Envoi de l'email via Brevo
     const msg = {
       to: email,
-      from: "gaoussouthiero04@gmail.com",
       subject: "Nouveau mot de passe - CityCare 🔐",
       text: `Bonjour, votre mot de passe temporaire est : ${newPassword}`,
       html: `<b>Bonjour,</b><br><p>Votre nouveau mot de passe temporaire est : <strong style="color: #1A73B8;">${newPassword}</strong></p>`,
     };
 
-    // Envoi en arrière‑plan
-    mailer.send(msg).catch((err) => {
-      console.error("Erreur d'envoi d'email :", err.message);
+    mailer.sendMail(msg).catch((err) => {
+      console.error("Erreur d'envoi d'email forgotPassword:", err.message);
     });
+
   } catch (err) {
     console.error("Erreur ForgotPassword :", err);
-    // On vérifie si la réponse n'a pas déjà été envoyée
     if (!res.headersSent) {
       res.status(500).json({ error: "Erreur technique, réessayez plus tard." });
     }
@@ -187,17 +160,8 @@ exports.forgotPassword = async (req, res) => {
 // --- STATS POUR LE DASHBOARD ADMIN ---
 exports.getAdminStats = async (req, res) => {
   try {
-    // 1. Nombre total de signalements
-    const [reports] = await db.query(
-      "SELECT COUNT(*) as total FROM signalements",
-    );
-
-    // 2. Nombre total de citoyens
-    const [citizens] = await db.query(
-      "SELECT COUNT(*) as total FROM users WHERE role = 'citoyen'",
-    );
-
-    // 3. Nombre d'urgences (Signalements ayant au moins 50 validations)
+    const [reports] = await db.query("SELECT COUNT(*) as total FROM signalements");
+    const [citizens] = await db.query("SELECT COUNT(*) as total FROM users WHERE role = 'citoyen'");
     const [emergencies] = await db.query(`
       SELECT COUNT(*) as total FROM (
         SELECT signalement_id 
@@ -220,9 +184,7 @@ exports.getAdminStats = async (req, res) => {
 
 exports.getAllReports = async (req, res) => {
   try {
-    const [rows] = await db.query(
-      "SELECT * FROM signalements ORDER BY date_signalement DESC",
-    );
+    const [rows] = await db.query("SELECT * FROM signalements ORDER BY date_signalement DESC");
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -233,68 +195,52 @@ exports.updateReportStatus = async (req, res) => {
   const { reportId } = req.params;
   const { statut, userId, title, message } = req.body;
 
-  // Log pour voir si les données arrivent bien
-  console.log(
-    "Update demandée pour report:",
-    reportId,
-    "Nouveau statut:",
-    statut,
-  );
-
   try {
-    // 1. Mise à jour du signalement
     const [result] = await db.query(
       "UPDATE signalements SET statut = ? WHERE id = ?",
-      [statut, reportId],
+      [statut, reportId]
     );
 
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: "Signalement non trouvé" });
     }
 
-    // 2. Création de l'activité/notification
-    // On met admin_id = 1 par défaut pour l'instant
     await db.query(
       "INSERT INTO notifications (user_id, report_id, admin_id, titre, description) VALUES (?, ?, ?, ?, ?)",
-      [userId, reportId, 1, title, message],
+      [userId, reportId, 1, title, message]
     );
 
     res.status(200).json({ success: true });
   } catch (err) {
-    console.error("Erreur SQL:", err);
+    console.error("Erreur SQL updateReportStatus:", err);
     res.status(500).json({ error: err.message });
   }
 };
 
-// Ajoute aussi celle-ci pour le journal d'activités
 exports.getRecentActivities = async (req, res) => {
   try {
-    const [rows] = await db.query(`
-            SELECT n.*, s.titre as report_title 
-            FROM notifications n
-            JOIN signalements s ON n.report_id = s.id
-            ORDER BY n.created_at DESC 
-            LIMIT 10
-        `);
-    res.status(200).json(rows);
+    const sql = `
+        (SELECT 'report' as type, CONCAT('Signalement: ', titre) as description, date_signalement as date 
+         FROM signalements ORDER BY date_signalement DESC LIMIT 5)
+        UNION ALL
+        (SELECT 'work' as type, CONCAT('Intervention: ', description) as description, created_at as date 
+         FROM interventions ORDER BY created_at DESC LIMIT 5)
+        ORDER BY date DESC LIMIT 10`;
+    
+    const [rows] = await db.query(sql);
+    res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
 exports.getUserNotifications = async (req, res) => {
-  const userId = req.params.userId; // On passera l'ID de l'utilisateur
+  const userId = req.params.userId;
   try {
     const [rows] = await db.query(
-      `
-            SELECT * FROM notifications 
-            WHERE user_id = ? 
-            ORDER BY created_at DESC 
-            LIMIT 50
-        `,
-      [userId],
+      "SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50",
+      [userId]
     );
-
     res.status(200).json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -304,82 +250,50 @@ exports.getUserNotifications = async (req, res) => {
 exports.markNotificationAsRead = async (req, res) => {
   const notifId = req.params.id;
   try {
-    await db.query("UPDATE notifications SET is_read = 1 WHERE id = ?", [
-      notifId,
-    ]);
+    await db.query("UPDATE notifications SET is_read = 1 WHERE id = ?", [notifId]);
     res.status(200).json({ message: "Notification marquée comme lue" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-// --- SUPPRIMER UN UTILISATEUR ---
 exports.deleteUser = async (req, res) => {
   const userId = req.params.id;
   try {
-    // 1. On supprime d'abord ses notifications/activités pour éviter le blocage SQL
     await db.query("DELETE FROM notifications WHERE user_id = ?", [userId]);
-
-    // 2. On supprime enfin l'utilisateur
     const [result] = await db.query("DELETE FROM users WHERE id = ?", [userId]);
 
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: "Utilisateur non trouvé" });
     }
-
-    res.json({
-      success: true,
-      message: "Utilisateur et ses données supprimés",
-    });
+    res.json({ success: true, message: "Utilisateur supprimé" });
   } catch (err) {
-    console.error("🔥 Erreur SQL Delete:", err.message);
-    res.status(500).json({
-      error:
-        "Impossible de supprimer : cet utilisateur a des signalements actifs.",
-    });
+    res.status(500).json({ error: "Erreur lors de la suppression." });
   }
 };
 
-// --- CHANGER LE RÔLE ---
 exports.toggleRole = async (req, res) => {
   const id = req.body.id || req.body.userId;
   try {
-    // 1. On cherche le rôle RÉEL en base de données
     const [rows] = await db.query("SELECT role FROM users WHERE id = ?", [id]);
-    if (rows.length === 0)
-      return res.status(404).json({ error: "Utilisateur non trouvé" });
+    if (rows.length === 0) return res.status(404).json({ error: "Utilisateur non trouvé" });
 
-    const actualRole = rows[0].role;
-    // 2. On inverse
-    const newRole = actualRole === "admin" ? "citoyen" : "admin";
-
+    const newRole = rows[0].role === "admin" ? "citoyen" : "admin";
     await db.query("UPDATE users SET role = ? WHERE id = ?", [newRole, id]);
-    console.log(`✅ ID ${id} passé de ${actualRole} à ${newRole}`);
     res.json({ success: true, newRole });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-// --- ACTIVER / DÉSACTIVER COMPTE ---
 exports.toggleUserStatus = async (req, res) => {
   const id = req.body.id || req.body.userId;
   try {
-    const [rows] = await db.query("SELECT is_active FROM users WHERE id = ?", [
-      id,
-    ]);
-    if (rows.length === 0)
-      return res.status(404).json({ error: "Utilisateur non trouvé" });
+    const [rows] = await db.query("SELECT is_active FROM users WHERE id = ?", [id]);
+    if (rows.length === 0) return res.status(404).json({ error: "Utilisateur non trouvé" });
 
-    const actualStatus = rows[0].is_active;
-    // On inverse (si 1 devient 0, si 0 devient 1)
-    const newStatus = actualStatus === 1 ? 0 : 1;
-
-    await db.query("UPDATE users SET is_active = ? WHERE id = ?", [
-      newStatus,
-      id,
-    ]);
-    console.log(`🔌 ID ${id} : Status passé de ${actualStatus} à ${newStatus}`);
+    const newStatus = rows[0].is_active === 1 ? 0 : 1;
+    await db.query("UPDATE users SET is_active = ? WHERE id = ?", [newStatus, id]);
     res.json({ success: true, is_active: newStatus });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -387,7 +301,6 @@ exports.toggleUserStatus = async (req, res) => {
 };
 
 exports.getAllUsers = async (req, res) => {
-  // <-- Vérifie l'orthographe ici
   try {
     const [rows] = await db.query("SELECT * FROM users");
     res.json(rows);
@@ -396,7 +309,6 @@ exports.getAllUsers = async (req, res) => {
   }
 };
 
-// --- 1. Répartition par Catégorie (Pie Chart) ---
 exports.getCategoryStats = async (req, res) => {
   try {
     const [rows] = await db.query(`
@@ -411,14 +323,12 @@ exports.getCategoryStats = async (req, res) => {
   }
 };
 
-// --- 2. Performance Maintenance (Bar Chart) ---
 exports.getMaintenanceStats = async (req, res) => {
   try {
     const [rows] = await db.query(`
-            SELECT 
-                DATE_FORMAT(created_at, '%d/%m') AS label,
-                COUNT(*) AS total, 
-                SUM(CASE WHEN statut = 'TERMINE' THEN 1 ELSE 0 END) AS resolved 
+            SELECT DATE_FORMAT(created_at, '%d/%m') AS label,
+                   COUNT(*) AS total, 
+                   SUM(CASE WHEN statut = 'TERMINE' THEN 1 ELSE 0 END) AS resolved 
             FROM interventions 
             GROUP BY label 
             ORDER BY created_at DESC LIMIT 5
@@ -429,7 +339,6 @@ exports.getMaintenanceStats = async (req, res) => {
   }
 };
 
-// --- 3. Évolution des Signalements (Line Chart) ---
 exports.getReportEvolutionStats = async (req, res) => {
   try {
     const [rows] = await db.query(`
@@ -442,27 +351,4 @@ exports.getReportEvolutionStats = async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-};
-
-exports.getRecentActivities = (req, res) => {
-  const sql = `
-        (SELECT 
-            'report' as type, 
-            CONCAT('Signalement: ', titre) as description, 
-            date_signalement as date 
-         FROM signalements 
-         ORDER BY date_signalement DESC LIMIT 5)
-        UNION ALL
-        (SELECT 
-            'work' as type, 
-            CONCAT('Intervention: ', description) as description, 
-            created_at as date 
-         FROM interventions 
-         ORDER BY created_at DESC LIMIT 5)
-        ORDER BY date DESC LIMIT 10`;
-
-  db.query(sql, (err, results) => {
-    if (err) return res.status(500).json(err);
-    res.json(results);
-  });
 };
