@@ -125,7 +125,7 @@ exports.login = async (req, res) => {
 
 // --- 3. MOT DE PASSE OUBLIÉ ---
 exports.forgotPassword = async (req, res) => {
-  const { email } = req.body;
+  const { email, prenom, } = req.body;
 
   try {
     // 1. Génération du mot de passe
