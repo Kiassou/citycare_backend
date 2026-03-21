@@ -6,175 +6,87 @@ const mailer = require("../config/mailer");
 
 // --- 1. INSCRIPTION ---
 exports.register = async (req, res) => {
-  const { nom, prenom, username, telephone, email, password } = req.body;
+    const { nom, prenom, username, telephone, email, password } = req.body;
+    try {
+        const [existingUser] = await db.query(
+            "SELECT * FROM users WHERE email = ? OR username = ?",
+            [email, username],
+        );
 
-  try {
-    // Vérifier si l'utilisateur existe déjà
-    const [existingUser] = await db.query(
-      "SELECT * FROM users WHERE email = ? OR username = ?",
-      [email, username],
-    );
+        if (existingUser.length > 0) {
+            return res.status(400).json({ message: "L'email ou le nom d'utilisateur est déjà utilisé." });
+        }
 
-    if (existingUser.length > 0) {
-      return res
-        .status(400)
-        .json({ message: "L'email ou le nom d'utilisateur est déjà utilisé." });
-    }
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Cryptage du mot de passe
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Insertion (rôle citoyen par défaut)
-    const sql = `INSERT INTO users (nom, prenom, username, telephone, email, password, role) 
+        const sql = `INSERT INTO users (nom, prenom, username, telephone, email, password, role) 
                      VALUES (?, ?, ?, ?, ?, ?, 'citoyen')`;
 
-    await db.query(sql, [
-      nom,
-      prenom,
-      username,
-      telephone,
-      email,
-      hashedPassword,
-    ]);
+        await db.query(sql, [nom, prenom, username, telephone, email, hashedPassword]);
 
-    // Envoi de l'email de bienvenue
-    const msg = {
-      to: email,
-      subject: "Bienvenue sur CityCare ! 🏙️",
-      html: `
-      <div style="font-family: Arial, sans-serif; border: 1px solid #eee; padding: 20px; border-radius: 10px; max-width: 500px;">
-          <h2 style="color: #1A73B8;">Bienvenue ${prenom} !</h2>
-          <p>Merci de rejoindre <strong>CityCare</strong>. Ton compte a été créé avec succès.</p>
-          <hr style="border: none; border-top: 1px solid #eee;">
-          <p style="font-size: 12px; color: #777;">Équipe CityCare</p>
-      </div>`,
-    };
+        const msg = {
+            to: email,
+            subject: "Bienvenue sur CityCare ! 🏙️",
+            html: `<h3>Bienvenue ${prenom} !</h3><p>Ton compte CityCare a été créé avec succès.</p>`,
+        };
 
-    // 1. Envoi bloquant avant la réponse (optionnel)
-   mailer.sendMail(msg).catch((err) => console.error("Erreur email bienvenue:", err.message));
-
-    res.status(201).json({ message: "Inscription réussie !" });
-
-  } catch (err) {
-    console.error("Erreur Inscription :", err);
-    if (!res.headersSent) {
-      res.status(500).json({ error: "Erreur serveur", details: err.message });
+        mailer.sendMail(msg).catch((err) => console.error("Erreur email bienvenue:", err.message));
+        res.status(201).json({ message: "Inscription réussie !" });
+    } catch (err) {
+        console.error("Erreur Inscription :", err);
+        res.status(500).json({ error: "Erreur serveur", details: err.message });
     }
-  }
 };
 
+// --- 2. CONNEXION ---
 exports.login = async (req, res) => {
-  const { username, password } = req.body;
+    const { username, password } = req.body;
+    try {
+        const [rows] = await db.query("SELECT * FROM users WHERE username = ?", [username]);
+        if (rows.length === 0) return res.status(404).json({ message: "Utilisateur non trouvé" });
 
-  console.log("🚀 Tentative de connexion pour :", username);
+        const user = rows[0];
+        const isMatch = await bcrypt.compare(password.trim(), user.password.trim());
+        if (!isMatch) return res.status(401).json({ message: "Mot de passe incorrect" });
 
-  try {
-    const result = await db.query("SELECT * FROM users WHERE username = ?", [
-      username,
-    ]);
+        const token = jwt.sign(
+            { id: user.id, role: user.role },
+            process.env.JWT_SECRET || "secret",
+            { expiresIn: "1d" },
+        );
 
-    // On extrait les lignes (rows) selon la config de ton driver mysql2
-    const rows = Array.isArray(result[0]) ? result[0] : result;
-
-    if (!rows || rows.length === 0) {
-      console.log("❌ Utilisateur non trouvé en BDD");
-      return res.status(404).json({ message: "Utilisateur non trouvé" });
+        res.json({
+            token,
+            user: { id: user.id, nom: user.nom, prenom: user.prenom, username: user.username, email: user.email, role: user.role }
+        });
+    } catch (err) {
+        res.status(500).json({ error: "Erreur serveur" });
     }
-
-    // ON DÉFINIT 'user' ICI pour qu'il soit accessible partout dans le bloc try
-    const user = rows[0];
-    console.log(
-      "✅ Utilisateur trouvé :",
-      user.username,
-      " | Rôle :",
-      user.role,
-    );
-
-    // Comparaison du mot de passe
-    const isMatch = await bcrypt.compare(password.trim(), user.password.trim());
-
-    if (!isMatch) {
-      return res.status(401).json({ message: "Mot de passe incorrect" });
-    }
-
-    const token = jwt.sign(
-      { id: user.id, role: user.role },
-      process.env.JWT_SECRET || "secret",
-      { expiresIn: "1d" },
-    );
-
-    res.json({
-      message: "Connexion réussie",
-      token,
-      user: {
-        id: user.id,
-        nom: user.nom,
-        prenom: user.prenom,
-        username: user.username,
-        email: user.email,
-        telephone: user.telephone,
-        role: user.role,
-      },
-    });
-  } catch (err) {
-    console.error("🔥 ERREUR SERVEUR :", err);
-    res.status(500).json({ error: "Erreur serveur", details: err.message });
-  }
 };
 
 // --- 3. MOT DE PASSE OUBLIÉ ---
 exports.forgotPassword = async (req, res) => {
-  const { email } = req.body;
+    const { email } = req.body;
+    try {
+        const [users] = await db.query("SELECT prenom FROM users WHERE email = ?", [email]);
+        if (users.length === 0) return res.status(404).json({ message: "Email inconnu." });
 
-  try {
-    // 1. On récupère l'utilisateur pour avoir son PRÉNOM
-    const [users] = await db.query("SELECT prenom FROM users WHERE email = ?", [email]);
+        const userPrenom = users[0].prenom;
+        const newPassword = crypto.randomBytes(4).toString("hex").toUpperCase();
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    if (users.length === 0) {
-      return res.status(404).json({ message: "Cet email n'existe pas dans notre base." });
+        await db.query("UPDATE users SET password = ? WHERE email = ?", [hashedPassword, email]);
+        res.json({ message: "Email envoyé." });
+
+        mailer.sendMail({
+            to: email,
+            subject: "Nouveau mot de passe - CityCare 🔐",
+            html: `<h3>Bonjour ${userPrenom},</h3><p>Mot de passe temporaire : <b>${newPassword}</b></p>`,
+        }).catch(err => console.error(err));
+    } catch (err) {
+        res.status(500).json({ error: "Erreur technique." });
     }
-
-    const userPrenom = users[0].prenom; // On stocke le prénom ici ✅
-
-    // 2. Génération du nouveau mot de passe
-    const newPassword = crypto.randomBytes(4).toString("hex").toUpperCase();
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    // 3. Mise à jour en base de données
-    await db.query(
-      "UPDATE users SET password = ? WHERE email = ?",
-      [hashedPassword, email],
-    );
-
-    // 4. Réponse immédiate au client
-    res.json({ message: "Si cet email existe, un nouveau mot de passe a été envoyé." });
-
-    // 5. Envoi de l'email avec le PRÉNOM
-    const msg = {
-      to: email,
-      subject: "Nouveau mot de passe - CityCare 🔐",
-      html: `
-        <div style="font-family: Arial, sans-serif; padding: 20px;">
-          <h3>Bonjour ${userPrenom},</h3> 
-          <p>Votre nouveau mot de passe temporaire est : <strong style="color: #1A73B8;">${newPassword}</strong></p>
-          <p>Pensez à le modifier dès votre connexion.</p>
-          <br>
-          <p>L'équipe CityCare</p>
-        </div>
-      `,
-    };
-
-    mailer.sendMail(msg).catch((err) => {
-      console.error("Erreur d'envoi d'email ForgotPassword :", err.message);
-    });
-
-  } catch (err) {
-    console.error("Erreur ForgotPassword :", err);
-    if (!res.headersSent) {
-      res.status(500).json({ error: "Erreur technique." });
-    }
-  }
 };
 
 // --- 4. STATS ADMIN (CORRIGÉES POUR TOUS LES COMPTES) ---
