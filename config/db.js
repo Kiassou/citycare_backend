@@ -14,8 +14,7 @@ const pool = mysql.createPool({
   ssl: {
     rejectUnauthorized: false
   },
-  // On force IPv4 pour éviter les soucis réseau de Render
-  family: 4 
+
 });
 
 const db = pool.promise();
