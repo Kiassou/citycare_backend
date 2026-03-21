@@ -259,18 +259,29 @@ exports.updateReportStatus = async (req, res) => {
   }
 };
 
-// Ajoute aussi celle-ci pour le journal d'activités
 exports.getRecentActivities = async (req, res) => {
+  const sql = `
+        (SELECT 
+            'report' as type, 
+            CONCAT('Signalement: ', titre) as description, 
+            date_signalement as date 
+         FROM signalements 
+         ORDER BY date_signalement DESC LIMIT 5)
+        UNION ALL
+        (SELECT 
+            'work' as type, 
+            CONCAT('Intervention: ', description) as description, 
+            created_at as date 
+         FROM interventions 
+         ORDER BY created_at DESC LIMIT 5)
+        ORDER BY date DESC LIMIT 10`;
+
   try {
-    const [rows] = await db.query(`
-            SELECT n.*, s.titre as report_title 
-            FROM notifications n
-            JOIN signalements s ON n.report_id = s.id
-            ORDER BY n.created_at DESC 
-            LIMIT 10
-        `);
-    res.status(200).json(rows);
+    // Utilisation de await au lieu du callback (err, results)
+    const [results] = await db.query(sql);
+    res.json(results);
   } catch (err) {
+    console.error("Erreur SQL getRecentActivities:", err);
     res.status(500).json({ error: err.message });
   }
 };
