@@ -2,17 +2,13 @@ const mysql = require("mysql2");
 require("dotenv").config();
 
 const pool = mysql.createPool({
-  // Utilise les variables de Render, sinon utilise des valeurs par défaut
-  host: process.env.DB_HOST, 
-  user: process.env.DB_USER || "avnadmin",
+  host: process.env.DB_HOST,      // Sera remplacé par la valeur de Render
+  user: process.env.DB_USER,      // Souvent 'avnadmin'
   password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME || "defaultdb",
-  port: process.env.DB_PORT || 15825, 
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
+  database: process.env.DB_NAME,  // Souvent 'defaultdb'
+  port: process.env.DB_PORT || 15825,
   ssl: {
-    rejectUnauthorized: false, // OBLIGATOIRE pour Aiven
+    rejectUnauthorized: false,    // OBLIGATOIRE pour Aiven
   },
 });
 
@@ -24,7 +20,6 @@ db.getConnection()
     conn.release();
   })
   .catch((err) => {
-    // Si tu vois ENOTFOUND ici, c'est que DB_HOST est mal écrit sur Render
     console.error("Erreur de connexion MySQL ❌ :", err.message);
   });
 
