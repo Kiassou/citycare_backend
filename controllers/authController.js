@@ -177,296 +177,125 @@ exports.forgotPassword = async (req, res) => {
   }
 };
 
-// --- STATS POUR LE DASHBOARD ADMIN ---
+// --- 4. STATS ADMIN (CORRIGÉES POUR TOUS LES COMPTES) ---
 exports.getAdminStats = async (req, res) => {
-  try {
-    // 1. Nombre total de signalements
-    const [reports] = await db.query(
-      "SELECT COUNT(*) as total FROM signalements",
-    );
+    try {
+        // Stats Signalements
+        const [[reports]] = await db.query("SELECT COUNT(*) as total FROM signalements");
+        
+        // Stats Utilisateurs par Rôles et Statut
+        const [[citizens]] = await db.query("SELECT COUNT(*) as total FROM users WHERE role = 'citoyen'");
+        const [[admins]] = await db.query("SELECT COUNT(*) as total FROM users WHERE role = 'admin'");
+        const [[inactive]] = await db.query("SELECT COUNT(*) as total FROM users WHERE is_active = 0");
+        const [[totalUsers]] = await db.query("SELECT COUNT(*) as total FROM users");
 
-    // 2. Nombre total de citoyens
-    const [citizens] = await db.query(
-      "SELECT COUNT(*) as total FROM users WHERE role = 'citoyen'",
-    );
+        // Stats Urgences
+        const [[emergencies]] = await db.query(`
+            SELECT COUNT(*) as total FROM (
+                SELECT signalement_id FROM validations GROUP BY signalement_id HAVING COUNT(*) >= 50
+            ) as urgent_list
+        `);
 
-    // 3. Nombre d'urgences (Signalements ayant au moins 50 validations)
-    const [emergencies] = await db.query(`
-      SELECT COUNT(*) as total FROM (
-        SELECT signalement_id 
-        FROM validations 
-        GROUP BY signalement_id 
-        HAVING COUNT(*) >= 50
-      ) as urgent_list
-    `);
-
-    res.json({
-      totalReports: reports[0].total || 0,
-      totalCitizens: citizens[0].total || 0,
-      totalEmergencies: emergencies[0].total || 0,
-    });
-  } catch (err) {
-    console.error("Erreur SQL Stats Admin:", err);
-    res.status(500).json({ error: err.message });
-  }
+        res.json({
+            totalReports: reports.total || 0,
+            totalCitizens: citizens.total || 0,
+            totalAdmins: admins.total || 0,
+            totalInactive: inactive.total || 0,
+            totalUsers: totalUsers.total || 0,
+            totalEmergencies: emergencies.total || 0,
+        });
+    } catch (err) {
+        console.error("Erreur Stats:", err);
+        res.status(500).json({ error: err.message });
+    }
 };
 
+// --- 5. GESTION DES SIGNALEMENTS ---
 exports.getAllReports = async (req, res) => {
-  try {
-    const [rows] = await db.query(
-      "SELECT * FROM signalements ORDER BY date_signalement DESC",
-    );
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    try {
+        const [rows] = await db.query("SELECT * FROM signalements ORDER BY date_signalement DESC");
+        res.json(rows);
+    } catch (err) { res.status(500).json({ error: err.message }); }
 };
 
 exports.updateReportStatus = async (req, res) => {
-  const { reportId } = req.params;
-  const { statut, userId, title, message } = req.body;
+    const { reportId } = req.params;
+    const { statut, userId, title, message } = req.body;
+    try {
+        const [result] = await db.query("UPDATE signalements SET statut = ? WHERE id = ?", [statut, reportId]);
+        if (result.affectedRows === 0) return res.status(404).json({ error: "Non trouvé" });
 
-  // Log pour voir si les données arrivent bien
-  console.log(
-    "Update demandée pour report:",
-    reportId,
-    "Nouveau statut:",
-    statut,
-  );
-
-  try {
-    // 1. Mise à jour du signalement
-    const [result] = await db.query(
-      "UPDATE signalements SET statut = ? WHERE id = ?",
-      [statut, reportId],
-    );
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: "Signalement non trouvé" });
-    }
-
-    // 2. Création de l'activité/notification
-    // On met admin_id = 1 par défaut pour l'instant
-    await db.query(
-      "INSERT INTO notifications (user_id, report_id, admin_id, titre, description) VALUES (?, ?, ?, ?, ?)",
-      [userId, reportId, 1, title, message],
-    );
-
-    res.status(200).json({ success: true });
-  } catch (err) {
-    console.error("Erreur SQL:", err);
-    res.status(500).json({ error: err.message });
-  }
+        await db.query(
+            "INSERT INTO notifications (user_id, report_id, admin_id, titre, description) VALUES (?, ?, ?, ?, ?)",
+            [userId, reportId, 1, title, message]
+        );
+        res.status(200).json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 };
 
-exports.getRecentActivities = async (req, res) => {
-  const sql = `
-        (SELECT 
-            'report' as type, 
-            CONCAT('Signalement: ', titre) as description, 
-            date_signalement as date 
-         FROM signalements 
-         ORDER BY date_signalement DESC LIMIT 5)
-        UNION ALL
-        (SELECT 
-            'work' as type, 
-            CONCAT('Intervention: ', description) as description, 
-            created_at as date 
-         FROM interventions 
-         ORDER BY created_at DESC LIMIT 5)
-        ORDER BY date DESC LIMIT 10`;
-
-  try {
-    // Utilisation de await au lieu du callback (err, results)
-    const [results] = await db.query(sql);
-    res.json(results);
-  } catch (err) {
-    console.error("Erreur SQL getRecentActivities:", err);
-    res.status(500).json({ error: err.message });
-  }
-};
-
-exports.getUserNotifications = async (req, res) => {
-  const userId = req.params.userId; // On passera l'ID de l'utilisateur
-  try {
-    const [rows] = await db.query(
-      `
-            SELECT * FROM notifications 
-            WHERE user_id = ? 
-            ORDER BY created_at DESC 
-            LIMIT 50
-        `,
-      [userId],
-    );
-
-    res.status(200).json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-exports.markNotificationAsRead = async (req, res) => {
-  const notifId = req.params.id;
-  try {
-    await db.query("UPDATE notifications SET is_read = 1 WHERE id = ?", [
-      notifId,
-    ]);
-    res.status(200).json({ message: "Notification marquée comme lue" });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-// --- SUPPRIMER UN UTILISATEUR ---
-exports.deleteUser = async (req, res) => {
-  const userId = req.params.id;
-  try {
-    // 1. On supprime d'abord ses notifications/activités pour éviter le blocage SQL
-    await db.query("DELETE FROM notifications WHERE user_id = ?", [userId]);
-
-    // 2. On supprime enfin l'utilisateur
-    const [result] = await db.query("DELETE FROM users WHERE id = ?", [userId]);
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: "Utilisateur non trouvé" });
-    }
-
-    res.json({
-      success: true,
-      message: "Utilisateur et ses données supprimés",
-    });
-  } catch (err) {
-    console.error("🔥 Erreur SQL Delete:", err.message);
-    res.status(500).json({
-      error:
-        "Impossible de supprimer : cet utilisateur a des signalements actifs.",
-    });
-  }
-};
-
-// --- CHANGER LE RÔLE ---
-exports.toggleRole = async (req, res) => {
-  const id = req.body.id || req.body.userId;
-  try {
-    // 1. On cherche le rôle RÉEL en base de données
-    const [rows] = await db.query("SELECT role FROM users WHERE id = ?", [id]);
-    if (rows.length === 0)
-      return res.status(404).json({ error: "Utilisateur non trouvé" });
-
-    const actualRole = rows[0].role;
-    // 2. On inverse
-    const newRole = actualRole === "admin" ? "citoyen" : "admin";
-
-    await db.query("UPDATE users SET role = ? WHERE id = ?", [newRole, id]);
-    console.log(`✅ ID ${id} passé de ${actualRole} à ${newRole}`);
-    res.json({ success: true, newRole });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-// --- ACTIVER / DÉSACTIVER COMPTE ---
-exports.toggleUserStatus = async (req, res) => {
-  const id = req.body.id || req.body.userId;
-  try {
-    const [rows] = await db.query("SELECT is_active FROM users WHERE id = ?", [
-      id,
-    ]);
-    if (rows.length === 0)
-      return res.status(404).json({ error: "Utilisateur non trouvé" });
-
-    const actualStatus = rows[0].is_active;
-    // On inverse (si 1 devient 0, si 0 devient 1)
-    const newStatus = actualStatus === 1 ? 0 : 1;
-
-    await db.query("UPDATE users SET is_active = ? WHERE id = ?", [
-      newStatus,
-      id,
-    ]);
-    console.log(`🔌 ID ${id} : Status passé de ${actualStatus} à ${newStatus}`);
-    res.json({ success: true, is_active: newStatus });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
+// --- 6. GESTION DES UTILISATEURS ---
 exports.getAllUsers = async (req, res) => {
-  // <-- Vérifie l'orthographe ici
-  try {
-    const [rows] = await db.query("SELECT * FROM users");
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    try {
+        const [rows] = await db.query("SELECT * FROM users");
+        res.json(rows);
+    } catch (err) { res.status(500).json({ error: err.message }); }
 };
 
-// --- 1. Répartition par Catégorie (Pie Chart) ---
-exports.getCategoryStats = async (req, res) => {
-  try {
-    const [rows] = await db.query(`
-            SELECT c.name AS category, COUNT(s.id) AS count 
-            FROM categories c 
-            LEFT JOIN signalements s ON c.id = s.category_id 
-            GROUP BY c.id, c.name
-        `);
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+exports.deleteUser = async (req, res) => {
+    const userId = req.params.id;
+    try {
+        await db.query("DELETE FROM notifications WHERE user_id = ?", [userId]);
+        await db.query("DELETE FROM users WHERE id = ?", [userId]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: "Erreur suppression." }); }
 };
 
-// --- 2. Performance Maintenance (Bar Chart) ---
-exports.getMaintenanceStats = async (req, res) => {
-  try {
-    const [rows] = await db.query(`
-            SELECT 
-                DATE_FORMAT(created_at, '%d/%m') AS label,
-                COUNT(*) AS total, 
-                SUM(CASE WHEN statut = 'TERMINE' THEN 1 ELSE 0 END) AS resolved 
-            FROM interventions 
-            GROUP BY label 
-            ORDER BY created_at DESC LIMIT 5
-        `);
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+exports.toggleRole = async (req, res) => {
+    const id = req.body.id || req.body.userId;
+    try {
+        const [rows] = await db.query("SELECT role FROM users WHERE id = ?", [id]);
+        if (rows.length === 0) return res.status(404).json({ error: "Non trouvé" });
+        const newRole = rows[0].role === "admin" ? "citoyen" : "admin";
+        await db.query("UPDATE users SET role = ? WHERE id = ?", [newRole, id]);
+        res.json({ success: true, newRole });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 };
 
-// --- 3. Évolution des Signalements (Line Chart) ---
-exports.getReportEvolutionStats = async (req, res) => {
-  try {
-    const [rows] = await db.query(`
-            SELECT COUNT(*) AS count 
-            FROM signalements 
-            GROUP BY DATE(date_signalement) 
-            ORDER BY DATE(date_signalement) ASC LIMIT 7
-        `);
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+exports.toggleUserStatus = async (req, res) => {
+    const id = req.body.id || req.body.userId;
+    try {
+        const [rows] = await db.query("SELECT is_active FROM users WHERE id = ?", [id]);
+        const newStatus = rows[0].is_active === 1 ? 0 : 1;
+        await db.query("UPDATE users SET is_active = ? WHERE id = ?", [newStatus, id]);
+        res.json({ success: true, is_active: newStatus });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 };
 
-exports.getRecentActivities = (req, res) => {
-  const sql = `
-        (SELECT 
-            'report' as type, 
-            CONCAT('Signalement: ', titre) as description, 
-            date_signalement as date 
-         FROM signalements 
-         ORDER BY date_signalement DESC LIMIT 5)
+// --- 7. NOTIFICATIONS ---
+exports.getUserNotifications = async (req, res) => {
+    try {
+        const [rows] = await db.query("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC", [req.params.userId]);
+        res.json(rows);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+};
+
+// --- 8. ACTIVITÉS RÉCENTES (SYNTAXE PROMISE FIXÉE) ---
+exports.getRecentActivities = async (req, res) => {
+    const sql = `
+        (SELECT 'report' as type, CONCAT('Signalement: ', titre) as description, date_signalement as date FROM signalements ORDER BY date_signalement DESC LIMIT 5)
         UNION ALL
-        (SELECT 
-            'work' as type, 
-            CONCAT('Intervention: ', description) as description, 
-            created_at as date 
-         FROM interventions 
-         ORDER BY created_at DESC LIMIT 5)
+        (SELECT 'work' as type, CONCAT('Intervention: ', description) as description, created_at as date FROM interventions ORDER BY created_at DESC LIMIT 5)
         ORDER BY date DESC LIMIT 10`;
+    try {
+        const [results] = await db.query(sql);
+        res.json(results);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+};
 
-  db.query(sql, (err, results) => {
-    if (err) return res.status(500).json(err);
-    res.json(results);
-  });
+// --- 9. GRAPHIQUES ---
+exports.getCategoryStats = async (req, res) => {
+    try {
+        const [rows] = await db.query("SELECT c.name AS category, COUNT(s.id) AS count FROM categories c LEFT JOIN signalements s ON c.id = s.category_id GROUP BY c.id, c.name");
+        res.json(rows);
+    } catch (err) { res.status(500).json({ error: err.message }); }
 };
