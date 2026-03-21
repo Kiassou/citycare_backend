@@ -125,49 +125,54 @@ exports.login = async (req, res) => {
 
 // --- 3. MOT DE PASSE OUBLIÉ ---
 exports.forgotPassword = async (req, res) => {
-  const { email, prenom, } = req.body;
+  const { email } = req.body;
 
   try {
-    // 1. Génération du mot de passe
+    // 1. On récupère l'utilisateur pour avoir son PRÉNOM
+    const [users] = await db.query("SELECT prenom FROM users WHERE email = ?", [email]);
+
+    if (users.length === 0) {
+      return res.status(404).json({ message: "Cet email n'existe pas dans notre base." });
+    }
+
+    const userPrenom = users[0].prenom; // On stocke le prénom ici ✅
+
+    // 2. Génération du nouveau mot de passe
     const newPassword = crypto.randomBytes(4).toString("hex").toUpperCase();
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    // 2. Mise à jour en base de données
-    const [result] = await db.query(
+    // 3. Mise à jour en base de données
+    await db.query(
       "UPDATE users SET password = ? WHERE email = ?",
       [hashedPassword, email],
     );
 
-    // Si aucune ligne n'est modifiée, l'email n'existe pas
-    if (result.affectedRows === 0) {
-      return res
-        .status(404)
-        .json({ message: "Cet email n'existe pas dans notre base." });
-    }
+    // 4. Réponse immédiate au client
+    res.json({ message: "Si cet email existe, un nouveau mot de passe a été envoyé." });
 
-    // 3. Réponse immédiate au client (pour arrêter le spinner sur l'appli)
-    res.json({
-      message: "Si cet email existe, un nouveau mot de passe a été envoyé.",
-    });
-
-    // 4. Envoi de l'email en arrière-plan (sans await pour ne pas faire attendre l'utilisateur)
+    // 5. Envoi de l'email avec le PRÉNOM
     const msg = {
       to: email,
       subject: "Nouveau mot de passe - CityCare 🔐",
-      text: `Bonjour ${prenom}, votre mot de passe temporaire est : ${newPassword}. Connectez-vous et modifiez-le rapidement.`,
-      html: `<b>Bonjour ${prenom},</b><br><p>Votre nouveau mot de passe temporaire est : <strong style="color: #1A73B8;">${newPassword}</strong>. Connectez-vous et modifiez-le rapidement.</p>`,
+      html: `
+        <div style="font-family: Arial, sans-serif; padding: 20px;">
+          <h3>Bonjour ${userPrenom},</h3> 
+          <p>Votre nouveau mot de passe temporaire est : <strong style="color: #1A73B8;">${newPassword}</strong></p>
+          <p>Pensez à le modifier dès votre connexion.</p>
+          <br>
+          <p>L'équipe CityCare</p>
+        </div>
+      `,
     };
 
-    // CORRECTION ICI : mailer.sendMail au lieu de mailer.send
     mailer.sendMail(msg).catch((err) => {
       console.error("Erreur d'envoi d'email ForgotPassword :", err.message);
     });
-    
+
   } catch (err) {
     console.error("Erreur ForgotPassword :", err);
-    // On vérifie si la réponse n'a pas déjà été envoyée
     if (!res.headersSent) {
-      res.status(500).json({ error: "Erreur technique, réessayez plus tard." });
+      res.status(500).json({ error: "Erreur technique." });
     }
   }
 };
