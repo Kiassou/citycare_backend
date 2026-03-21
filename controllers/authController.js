@@ -41,33 +41,21 @@ exports.register = async (req, res) => {
     // Envoi de l'email de bienvenue
     const msg = {
       to: email,
-      from: "gaoussouthiero04@gmail.com",
       subject: "Bienvenue sur CityCare ! 🏙️",
       html: `
       <div style="font-family: Arial, sans-serif; border: 1px solid #eee; padding: 20px; border-radius: 10px; max-width: 500px;">
           <h2 style="color: #1A73B8;">Bienvenue ${prenom} !</h2>
           <p>Merci de rejoindre <strong>CityCare</strong>. Ton compte a été créé avec succès.</p>
-          <p>Ensemble, agissons pour une ville plus propre et plus sûre.</p>
           <hr style="border: none; border-top: 1px solid #eee;">
-          <p style="font-size: 12px; color: #777;">Ceci est un message automatique de la part de l'équipe CityCare.</p>
-      </div>
-  `,
+          <p style="font-size: 12px; color: #777;">Équipe CityCare</p>
+      </div>`,
     };
 
     // 1. Envoi bloquant avant la réponse (optionnel)
-    await mailer.send(msg).catch((err) => {
-      console.error("Erreur envoi email bienvenue:", err);
-    });
+   mailer.sendMail(msg).catch((err) => console.error("Erreur email bienvenue:", err.message));
 
     res.status(201).json({ message: "Inscription réussie !" });
 
-    // 2. En arrière‑plan (si tu veux garder cette logique)
-    mailer.send(msg).catch((err) => {
-      console.error(
-        "Erreur envoi email bienvenue (arrière-plan):",
-        err.message,
-      );
-    });
   } catch (err) {
     console.error("Erreur Inscription :", err);
     if (!res.headersSent) {
@@ -165,16 +153,16 @@ exports.forgotPassword = async (req, res) => {
     // 4. Envoi de l'email en arrière-plan (sans await pour ne pas faire attendre l'utilisateur)
     const msg = {
       to: email,
-      from: "gaoussouthiero04@gmail.com",
       subject: "Nouveau mot de passe - CityCare 🔐",
       text: `Bonjour, votre mot de passe temporaire est : ${newPassword}`,
       html: `<b>Bonjour,</b><br><p>Votre nouveau mot de passe temporaire est : <strong style="color: #1A73B8;">${newPassword}</strong></p>`,
     };
 
-    // Envoi en arrière‑plan
-    mailer.send(msg).catch((err) => {
-      console.error("Erreur d'envoi d'email :", err.message);
+    // CORRECTION ICI : mailer.sendMail au lieu de mailer.send
+    mailer.sendMail(msg).catch((err) => {
+      console.error("Erreur d'envoi d'email ForgotPassword :", err.message);
     });
+    
   } catch (err) {
     console.error("Erreur ForgotPassword :", err);
     // On vérifie si la réponse n'a pas déjà été envoyée
