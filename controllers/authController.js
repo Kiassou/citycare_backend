@@ -38,28 +38,41 @@ exports.register = async (req, res) => {
       hashedPassword,
     ]);
 
-    // Envoi de l'email de bienvenue "Chic"
-    const mailOptions = {
-      from: '"CityCare Team" <gaoussouthiero04@gmail.com>',
+    // Envoi de l'email de bienvenue
+    const msg = {
       to: email,
+      from: "gaoussouthiero04@gmail.com",
       subject: "Bienvenue sur CityCare ! 🏙️",
       html: `
-                <div style="font-family: Arial, sans-serif; border: 1px solid #eee; padding: 20px; border-radius: 10px; max-width: 500px;">
-                    <h2 style="color: #1A73B8;">Bienvenue ${prenom} !</h2>
-                    <p>Merci de rejoindre <strong>CityCare</strong>. Ton compte a été créé avec succès.</p>
-                    <p>Ensemble, agissons pour une ville plus propre et plus sûre.</p>
-                    <hr style="border: none; border-top: 1px solid #eee;">
-                    <p style="font-size: 12px; color: #777;">Ceci est un message automatique de la part de l'équipe CityCare.</p>
-                </div>
-            `,
+      <div style="font-family: Arial, sans-serif; border: 1px solid #eee; padding: 20px; border-radius: 10px; max-width: 500px;">
+          <h2 style="color: #1A73B8;">Bienvenue ${prenom} !</h2>
+          <p>Merci de rejoindre <strong>CityCare</strong>. Ton compte a été créé avec succès.</p>
+          <p>Ensemble, agissons pour une ville plus propre et plus sûre.</p>
+          <hr style="border: none; border-top: 1px solid #eee;">
+          <p style="font-size: 12px; color: #777;">Ceci est un message automatique de la part de l'équipe CityCare.</p>
+      </div>
+  `,
     };
 
-    await mailer.sendMail(mailOptions);
+    // 1. Envoi bloquant avant la réponse (optionnel)
+    await mailer.send(msg).catch((err) => {
+      console.error("Erreur envoi email bienvenue:", err);
+    });
 
-    res.status(201).json({ message: "Inscription réussie et email envoyé !" });
+    res.status(201).json({ message: "Inscription réussie !" });
+
+    // 2. En arrière‑plan (si tu veux garder cette logique)
+    mailer.send(msg).catch((err) => {
+      console.error(
+        "Erreur envoi email bienvenue (arrière-plan):",
+        err.message,
+      );
+    });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Erreur serveur", details: err.message });
+    console.error("Erreur Inscription :", err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Erreur serveur", details: err.message });
+    }
   }
 };
 
@@ -125,29 +138,49 @@ exports.login = async (req, res) => {
 // --- 3. MOT DE PASSE OUBLIÉ ---
 exports.forgotPassword = async (req, res) => {
   const { email } = req.body;
-  // Génère un mot de passe aléatoire de 8 caractères (ex: 4F2A1B3E)
-  const newPassword = crypto.randomBytes(4).toString("hex").toUpperCase();
-  const hashedPassword = await bcrypt.hash(newPassword, 10);
 
   try {
+    // 1. Génération du mot de passe
+    const newPassword = crypto.randomBytes(4).toString("hex").toUpperCase();
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // 2. Mise à jour en base de données
     const [result] = await db.query(
       "UPDATE users SET password = ? WHERE email = ?",
       [hashedPassword, email],
     );
 
-    if (result.affectedRows === 0)
-      return res.status(404).json({ message: "Email non trouvé" });
+    // Si aucune ligne n'est modifiée, l'email n'existe pas
+    if (result.affectedRows === 0) {
+      return res
+        .status(404)
+        .json({ message: "Cet email n'existe pas dans notre base." });
+    }
 
-    await mailer.sendMail({
-      from: '"CityCare Support" <gaoussouthiero04@gmail.com>',
-      to: email,
-      subject: "Réinitialisation de mot de passe - CityCare",
-      text: `Bonjour, votre nouveau mot de passe temporaire est : ${newPassword}. Connectez-vous et modifiez-le rapidement.`,
+    // 3. Réponse immédiate au client (pour arrêter le spinner sur l'appli)
+    res.json({
+      message: "Si cet email existe, un nouveau mot de passe a été envoyé.",
     });
 
-    res.json({ message: "Un nouveau mot de passe a été envoyé par email." });
+    // 4. Envoi de l'email en arrière-plan (sans await pour ne pas faire attendre l'utilisateur)
+    const msg = {
+      to: email,
+      from: "gaoussouthiero04@gmail.com",
+      subject: "Nouveau mot de passe - CityCare 🔐",
+      text: `Bonjour, votre mot de passe temporaire est : ${newPassword}`,
+      html: `<b>Bonjour,</b><br><p>Votre nouveau mot de passe temporaire est : <strong style="color: #1A73B8;">${newPassword}</strong></p>`,
+    };
+
+    // Envoi en arrière‑plan
+    mailer.send(msg).catch((err) => {
+      console.error("Erreur d'envoi d'email :", err.message);
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("Erreur ForgotPassword :", err);
+    // On vérifie si la réponse n'a pas déjà été envoyée
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Erreur technique, réessayez plus tard." });
+    }
   }
 };
 
@@ -235,18 +268,18 @@ exports.updateReportStatus = async (req, res) => {
 
 // Ajoute aussi celle-ci pour le journal d'activités
 exports.getRecentActivities = async (req, res) => {
-    try {
-        const [rows] = await db.query(`
+  try {
+    const [rows] = await db.query(`
             SELECT n.*, s.titre as report_title 
             FROM notifications n
             JOIN signalements s ON n.report_id = s.id
             ORDER BY n.created_at DESC 
             LIMIT 10
         `);
-        res.status(200).json(rows);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    res.status(200).json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
 exports.getUserNotifications = async (req, res) => {
@@ -300,12 +333,10 @@ exports.deleteUser = async (req, res) => {
     });
   } catch (err) {
     console.error("🔥 Erreur SQL Delete:", err.message);
-    res
-      .status(500)
-      .json({
-        error:
-          "Impossible de supprimer : cet utilisateur a des signalements actifs.",
-      });
+    res.status(500).json({
+      error:
+        "Impossible de supprimer : cet utilisateur a des signalements actifs.",
+    });
   }
 };
 
@@ -367,23 +398,23 @@ exports.getAllUsers = async (req, res) => {
 
 // --- 1. Répartition par Catégorie (Pie Chart) ---
 exports.getCategoryStats = async (req, res) => {
-    try {
-        const [rows] = await db.query(`
+  try {
+    const [rows] = await db.query(`
             SELECT c.name AS category, COUNT(s.id) AS count 
             FROM categories c 
             LEFT JOIN signalements s ON c.id = s.category_id 
             GROUP BY c.id, c.name
         `);
-        res.json(rows);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
 // --- 2. Performance Maintenance (Bar Chart) ---
 exports.getMaintenanceStats = async (req, res) => {
-    try {
-        const [rows] = await db.query(`
+  try {
+    const [rows] = await db.query(`
             SELECT 
                 DATE_FORMAT(created_at, '%d/%m') AS label,
                 COUNT(*) AS total, 
@@ -392,29 +423,29 @@ exports.getMaintenanceStats = async (req, res) => {
             GROUP BY label 
             ORDER BY created_at DESC LIMIT 5
         `);
-        res.json(rows);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
 // --- 3. Évolution des Signalements (Line Chart) ---
 exports.getReportEvolutionStats = async (req, res) => {
-    try {
-        const [rows] = await db.query(`
+  try {
+    const [rows] = await db.query(`
             SELECT COUNT(*) AS count 
             FROM signalements 
             GROUP BY DATE(date_signalement) 
             ORDER BY DATE(date_signalement) ASC LIMIT 7
         `);
-        res.json(rows);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
 exports.getRecentActivities = (req, res) => {
-    const sql = `
+  const sql = `
         (SELECT 
             'report' as type, 
             CONCAT('Signalement: ', titre) as description, 
@@ -430,8 +461,8 @@ exports.getRecentActivities = (req, res) => {
          ORDER BY created_at DESC LIMIT 5)
         ORDER BY date DESC LIMIT 10`;
 
-    db.query(sql, (err, results) => {
-        if (err) return res.status(500).json(err);
-        res.json(results);
-    });
+  db.query(sql, (err, results) => {
+    if (err) return res.status(500).json(err);
+    res.json(results);
+  });
 };
