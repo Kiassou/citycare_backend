@@ -179,36 +179,28 @@ exports.forgotPassword = async (req, res) => {
 
 // --- STATS POUR LE DASHBOARD ADMIN ---
 exports.getAdminStats = async (req, res) => {
-  try {
-    // 1. Nombre total de signalements
-    const [reports] = await db.query(
-      "SELECT COUNT(*) as total FROM signalements",
-    );
+  try {
+    const [reports] = await db.query(
+      "SELECT COUNT(*) as total FROM signalements"
+    );
 
-    // 2. Nombre total de citoyens
-    const [citizens] = await db.query(
-      "SELECT COUNT(*) as total FROM users WHERE role = 'citoyen'",
-    );
+    const [citizens] = await db.query(
+      "SELECT COUNT(*) as total FROM users WHERE role = 'citoyen'"
+    );
 
-    // 3. Nombre d'urgences (Signalements ayant au moins 50 validations)
-    const [emergencies] = await db.query(`
-      SELECT COUNT(*) as total FROM (
-        SELECT signalement_id 
-        FROM validations 
-        GROUP BY signalement_id 
-        HAVING COUNT(*) >= 50
-      ) as urgent_list
-    `);
+    const [emergencies] = await db.query(
+      "SELECT COUNT(*) AS total FROM ( SELECT signalement_id FROM validations GROUP BY signalement_id HAVING COUNT(*) >= 50 ) AS urgent_list"
+    );
 
-    res.json({
-      totalReports: reports[0].total || 0,
-      totalCitizens: citizens[0].total || 0,
-      totalEmergencies: emergencies[0].total || 0,
-    });
-  } catch (err) {
-    console.error("Erreur SQL Stats Admin:", err);
-    res.status(500).json({ error: err.message });
-  }
+    res.json({
+      totalReports: reports[0].total || 0,
+      totalCitizens: citizens[0].total || 0,
+      totalEmergencies: emergencies[0].total || 0,
+    });
+  } catch (err) {
+    console.error("Erreur SQL Stats Admin:", err);
+    res.status(500).json({ error: err.message });
+  }
 };
 
 exports.getAllReports = async (req, res) => {
@@ -260,30 +252,27 @@ exports.updateReportStatus = async (req, res) => {
 };
 
 exports.getRecentActivities = async (req, res) => {
-  const sql = `
-        (SELECT 
-            'report' as type, 
-            CONCAT('Signalement: ', titre) as description, 
-            date_signalement as date 
-         FROM signalements 
-         ORDER BY date_signalement DESC LIMIT 5)
-        UNION ALL
-        (SELECT 
-            'work' as type, 
-            CONCAT('Intervention: ', description) as description, 
-            created_at as date 
-         FROM interventions 
-         ORDER BY created_at DESC LIMIT 5)
-        ORDER BY date DESC LIMIT 10`;
-
-  try {
-    // Utilisation de await au lieu du callback (err, results)
-    const [results] = await db.query(sql);
-    res.json(results);
-  } catch (err) {
-    console.error("Erreur SQL getRecentActivities:", err);
-    res.status(500).json({ error: err.message });
-  }
+  try {
+    const [rows] = await db.query(`
+      (SELECT 
+          'report' as type, 
+          CONCAT('Signalement: ', titre) as description, 
+          date_signalement as date 
+       FROM signalements 
+       ORDER BY date_signalement DESC LIMIT 5)
+      UNION ALL
+      (SELECT 
+          'work' as type, 
+          CONCAT('Intervention: ', description) as description, 
+          created_at as date 
+       FROM interventions 
+       ORDER BY created_at DESC LIMIT 5)
+      ORDER BY date DESC LIMIT 10
+    `);
+    res.status(200).json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
 exports.getUserNotifications = async (req, res) => {
