@@ -43,11 +43,13 @@ exports.register = async (req, res) => {
       subject: "Bienvenue sur CityCare ! 🏙️",
       html: `
       <div style="font-family: Arial, sans-serif; border: 1px solid #eee; padding: 20px; border-radius: 10px; max-width: 500px;">
-          <h2 style="color: #1A73B8;">Bienvenue ${prenom} !</h2>
-          <p>Merci de rejoindre <strong>CityCare</strong>. Ton compte a été créé avec succès.</p>
-          <hr style="border: none; border-top: 1px solid #eee;">
-          <p style="font-size: 12px; color: #777;">Équipe CityCare</p>
-      </div>`,
+          <h2 style="color: #1A73B8;">Bienvenue ${prenom} !</h2>
+          <p>Merci de rejoindre <strong>CityCare</strong>. Ton compte a été créé avec succès.</p>
+          <p>Ensemble, agissons pour une ville plus propre et plus sûre.</p>
+          <hr style="border: none; border-top: 1px solid #eee;">
+          <p style="font-size: 12px; color: #777;">Ceci est un message automatique de la part de l'équipe CityCare.</p>
+      </div>
+      `,
     };
 
     // 1. Envoi bloquant avant la réponse (optionnel)
