@@ -26,8 +26,7 @@ exports.register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
 
     // Insertion (rôle citoyen par défaut)
-    const sql = `INSERT INTO users (nom, prenom, username, telephone, email, password, role) 
-                     VALUES (?, ?, ?, ?, ?, ?, 'citoyen')`;
+    const sql = "INSERT INTO users (nom, prenom, username, telephone, email, password, role) VALUES (?, ?, ?, ?, ?, ?, 'citoyen')";
 
     await db.query(sql, [
       nom,
