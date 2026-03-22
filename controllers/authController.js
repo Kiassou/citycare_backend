@@ -437,25 +437,26 @@ exports.getReportEvolutionStats = async (req, res) => {
   }
 };
 
-exports.getRecentActivities = (req, res) => {
-  const sql = `
-        (SELECT 
-            'report' as type, 
-            CONCAT('Signalement: ', titre) as description, 
-            date_signalement as date 
-         FROM signalements 
-         ORDER BY date_signalement DESC LIMIT 5)
-        UNION ALL
-        (SELECT 
-            'work' as type, 
-            CONCAT('Intervention: ', description) as description, 
-            created_at as date 
-         FROM interventions 
-         ORDER BY created_at DESC LIMIT 5)
-        ORDER BY date DESC LIMIT 10`;
-
-  db.query(sql, (err, results) => {
-    if (err) return res.status(500).json(err);
-    res.json(results);
-  });
+exports.getRecentActivities = async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      (SELECT 
+          'report' as type, 
+          CONCAT('Signalement: ', titre) as description, 
+          date_signalement as date 
+       FROM signalements 
+       ORDER BY date_signalement DESC LIMIT 5)
+      UNION ALL
+      (SELECT 
+          'work' as type, 
+          CONCAT('Intervention: ', description) as description, 
+          created_at as date 
+       FROM interventions 
+       ORDER BY created_at DESC LIMIT 5)
+      ORDER BY date DESC LIMIT 10
+    `);
+    res.status(200).json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
