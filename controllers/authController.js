@@ -390,52 +390,52 @@ exports.getAllUsers = async (req, res) => {
   }
 };
 
-// --- 1. Répartition par Catégorie (Pie Chart) ---
+// 1. Répartition par Catégorie (Pie Chart)
 exports.getCategoryStats = async (req, res) => {
-  try {
-    const [rows] = await db.query(`
-            SELECT c.name AS category, COUNT(s.id) AS count 
-            FROM categories c 
-            LEFT JOIN signalements s ON c.id = s.category_id 
-            GROUP BY c.id, c.name
-        `);
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  try {
+    const [rows] = await db.query(`
+      SELECT c.name AS category, COUNT(s.id) AS count 
+      FROM categories c 
+      LEFT JOIN signalements s ON c.id = s.category_id 
+      GROUP BY c.id, c.name
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
-// --- 2. Performance Maintenance (Bar Chart) ---
+// 2. Performance Maintenance (Bar Chart)
 exports.getMaintenanceStats = async (req, res) => {
-  try {
-    const [rows] = await db.query(`
-            SELECT 
-                DATE_FORMAT(created_at, '%d/%m') AS label,
-                COUNT(*) AS total, 
-                SUM(CASE WHEN statut = 'TERMINE' THEN 1 ELSE 0 END) AS resolved 
-            FROM interventions 
-            GROUP BY label 
-            ORDER BY created_at DESC LIMIT 5
-        `);
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        DATE_FORMAT(created_at, '%d/%m') AS label,
+        COUNT(*) AS total, 
+        SUM(CASE WHEN statut = 'TERMINE' THEN 1 ELSE 0 END) AS resolved 
+      FROM interventions 
+      GROUP BY label 
+      ORDER BY created_at DESC LIMIT 5
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
-// --- 3. Évolution des Signalements (Line Chart) ---
+// 3. Évolution des Signalements (Line Chart)
 exports.getReportEvolutionStats = async (req, res) => {
-  try {
-    const [rows] = await db.query(`
-            SELECT COUNT(*) AS count 
-            FROM signalements 
-            GROUP BY DATE(date_signalement) 
-            ORDER BY DATE(date_signalement) ASC LIMIT 7
-        `);
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  try {
+    const [rows] = await db.query(`
+      SELECT COUNT(*) AS count 
+      FROM signalements 
+      GROUP BY DATE(date_signalement) 
+      ORDER BY DATE(date_signalement) ASC LIMIT 7
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
 exports.getRecentActivities = async (req, res) => {
