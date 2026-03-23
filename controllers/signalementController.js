@@ -1,77 +1,109 @@
 const db = require("../config/db");
+const axios = require("axios");
+const FormData = require("form-data");
+const fs = require("fs");
+
+// --- 1. CRÉER UN SIGNALEMENT (AVEC IMGBB) ---
 exports.createSignalement = async (req, res) => {
-  // Ajoute async ici
-  console.log("📥 Requête reçue !");
+    console.log("📥 Requête reçue pour un nouveau signalement !");
 
-  try {
-    const { user_id, titre, type_signalement, description, lieu } = req.body;
-    const photo_url = req.file ? `/uploads/signalements/${req.file.filename}` : null;
+    try {
+        const { user_id, titre, type_signalement, description, lieu } = req.body;
+        let photo_url = null;
 
-    const sql = `INSERT INTO signalements (user_id, titre, type_signalement, description, photo_url, lieu, statut) 
-                 VALUES (?, ?, ?, ?, ?, ?, 'en_attente')`;
+        // Si une photo est reçue par Multer, on l'envoie sur ImgBB
+        if (req.file) {
+            console.log("📸 Envoi de l'image vers ImgBB...");
+            
+            try {
+                const form = new FormData();
+                // On lit le fichier temporaire sauvegardé par Multer
+                form.append("image", fs.createReadStream(req.file.path));
 
-    console.log("🛠 Exécution de la requête SQL...");
+                const response = await axios.post(
+                    `https://api.imgbb.com/1/upload?key=${process.env.IMGBB_API_KEY}`,
+                    form,
+                    { headers: form.getHeaders() }
+                );
 
-    // Si tu es en mode Promise, on utilise await
-    const [result] = await db.query(sql, [
-      parseInt(user_id) || 1,
-      titre,
-      type_signalement,
-      description,
-      photo_url,
-      lieu,
-    ]);
+                // On récupère l'URL permanente générée par ImgBB
+                photo_url = response.data.data.url;
+                console.log("✅ Image hébergée avec succès :", photo_url);
 
-    console.log("💾 Succès ! ID inséré :", result.insertId);
+                // On supprime le fichier local pour ne pas encombrer Render
+                fs.unlinkSync(req.file.path);
+            } catch (imgError) {
+                console.error("❌ Erreur ImgBB :", imgError.message);
+                // Si l'envoi ImgBB échoue, on continue sans photo ou on renvoie une erreur
+            }
+        }
 
-    return res.status(201).json({
-      success: true,
-      message: "Signalement enregistré",
-      id: result.insertId,
-    });
-  } catch (error) {
-    console.error("❌ ERREUR TECHNIQUE :", error.message);
-    return res.status(500).json({ success: false, error: error.message });
-  }
-};
+        const sql = `INSERT INTO signalements (user_id, titre, type_signalement, description, photo_url, lieu, statut) 
+                     VALUES (?, ?, ?, ?, ?, ?, 'en_attente')`;
 
-exports.getUserSignalements = async (req, res) => {
-  try {
-    const userId = req.params.userId;
-    const limit = req.query.limit ? parseInt(req.query.limit) : 100; // Optionnel : limiter à 5 pour l'accueil
+        console.log("🛠 Enregistrement en base de données...");
 
-    const sql = `SELECT * FROM signalements WHERE user_id = ? ORDER BY date_signalement DESC LIMIT ?`;
+        const [result] = await db.query(sql, [
+            parseInt(user_id) || 1,
+            titre,
+            type_signalement,
+            description,
+            photo_url,
+            lieu,
+        ]);
 
-    const [rows] = await db.query(sql, [userId, limit]);
+        console.log("💾 Succès ! ID inséré :", result.insertId);
 
-    res.status(200).json(rows);
-  } catch (error) {
-    console.error("❌ Erreur GET signalements:", error.message);
-    res.status(500).json({ error: error.message });
-  }
-};
+        return res.status(201).json({
+            success: true,
+            message: "Signalement enregistré sur le Cloud",
+            id: result.insertId,
+            url: photo_url
+        });
 
-// FONCTION DE SUPPRESSION (À AJOUTER)
-exports.deleteSignalement = async (req, res) => {
-  try {
-    const { id } = req.params;
-    console.log("🗑 Tentative de suppression du signalement ID:", id);
-
-    const [result] = await db.query("DELETE FROM signalements WHERE id = ?", [id]);
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: "Signalement non trouvé" });
+    } catch (error) {
+        console.error("❌ ERREUR TECHNIQUE :", error.message);
+        return res.status(500).json({ success: false, error: error.message });
     }
-
-    console.log("✅ Signalement supprimé avec succès !");
-    return res.status(200).json({ success: true, message: "Supprimé" });
-  } catch (error) {
-    console.error("❌ Erreur suppression:", error.message);
-    return res.status(500).json({ error: error.message });
-  }
 };
 
-// 1. Récupérer TOUS les signalements avec le compte des validations
+// --- 2. RÉCUPÉRER LES SIGNALEMENTS D'UN UTILISATEUR ---
+exports.getUserSignalements = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        const limit = req.query.limit ? parseInt(req.query.limit) : 100;
+
+        const sql = `SELECT * FROM signalements WHERE user_id = ? ORDER BY date_signalement DESC LIMIT ?`;
+        const [rows] = await db.query(sql, [userId, limit]);
+
+        res.status(200).json(rows);
+    } catch (error) {
+        console.error("❌ Erreur GET signalements:", error.message);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// --- 3. SUPPRIMER UN SIGNALEMENT ---
+exports.deleteSignalement = async (req, res) => {
+    try {
+        const { id } = req.params;
+        console.log("🗑 Tentative de suppression du signalement ID:", id);
+
+        const [result] = await db.query("DELETE FROM signalements WHERE id = ?", [id]);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: "Signalement non trouvé" });
+        }
+
+        console.log("✅ Signalement supprimé avec succès !");
+        return res.status(200).json({ success: true, message: "Supprimé" });
+    } catch (error) {
+        console.error("❌ Erreur suppression:", error.message);
+        return res.status(500).json({ error: error.message });
+    }
+};
+
+// --- 4. RÉCUPÉRER TOUS LES SIGNALEMENTS (DASHBOARD) ---
 exports.getAllSignalements = async (req, res) => {
     try {
         const sql = `
@@ -80,6 +112,7 @@ exports.getAllSignalements = async (req, res) => {
             LEFT JOIN validations v ON s.id = v.signalement_id
             GROUP BY s.id
             ORDER BY s.date_signalement DESC`;
+            
         const [rows] = await db.query(sql);
         res.status(200).json(rows);
     } catch (error) {
@@ -87,11 +120,12 @@ exports.getAllSignalements = async (req, res) => {
     }
 };
 
-// 2. Ajouter une validation (Voter)
+// --- 5. VALIDER UN SIGNALEMENT (VOTE) ---
 exports.validateSignalement = async (req, res) => {
     try {
         const { signalement_id, user_id } = req.body;
         const sql = `INSERT INTO validations (signalement_id, user_id) VALUES (?, ?)`;
+        
         await db.query(sql, [signalement_id, user_id]);
         res.status(201).json({ success: true, message: "Validation enregistrée" });
     } catch (error) {
