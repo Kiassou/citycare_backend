@@ -277,22 +277,27 @@ exports.getRecentActivities = async (req, res) => {
 };
 
 exports.getUserNotifications = async (req, res) => {
-  const userId = req.params.userId; // On passera l'ID de l'utilisateur
-  try {
-    const [rows] = await db.query(
-      `
-            SELECT * FROM notifications 
-            WHERE user_id = ? 
-            ORDER BY created_at DESC 
-            LIMIT 50
-        `,
-      [userId],
-    );
+  const userId = req.params.userId;
+  console.log("🚀 getUserNotifications – userId:", userId);
 
-    res.status(200).json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  try {
+    const [rows] = await db.query(
+      `
+            SELECT * FROM notifications 
+            WHERE user_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT 50
+        `,
+      [userId],
+    );
+
+    console.log("✅ getUserNotifications – rows:", rows);
+
+    res.status(200).json(rows);
+  } catch (err) {
+    console.error("🔥 getUserNotifications ERREUR:", err.message, err.stack);
+    res.status(500).json({ error: err.message });
+  }
 };
 
 exports.markNotificationAsRead = async (req, res) => {
