@@ -2,23 +2,19 @@ const express = require("express");
 const router = express.Router();
 const newsController = require("../controllers/newsController");
 const multer = require("multer");
-const path = require("path");
 
-// Configuration du stockage Multer
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "uploads/news/");
-  },
-  filename: (req, file, cb) => {
-    cb(null, "news-" + Date.now() + path.extname(file.originalname));
-  },
-});
+// On utilise un stockage temporaire simple car l'image part ensuite sur ImgBB
+const upload = multer({ dest: "uploads/news/" });
 
-const upload = multer({ storage: storage });
-
-// Routes
+// --- Routes ---
 router.get("/", newsController.getAllNews);
-router.post("/", upload.single("image"), newsController.createNews); // "image" doit être le nom du champ côté Flutter
+
+// Création : le champ doit s'appeler "image"
+router.post("/", upload.single("image"), newsController.createNews);
+
+// Modification : on ajoute la route PUT avec l'ID
+router.put("/:id", upload.single("image"), newsController.updateNews);
+
 router.delete("/:id", newsController.deleteNews);
 
 module.exports = router;
