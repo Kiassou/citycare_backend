@@ -66,7 +66,7 @@ exports.deleteNews = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
-const db = require("../config/db");
+
 const uploadService = require("../services/uploadService");
 
 exports.createNews = async (req, res) => {
