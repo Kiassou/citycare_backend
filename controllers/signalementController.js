@@ -81,6 +81,19 @@ exports.getAllSignalements = async (req, res) => {
   }
 };
 
+// --- FONCTION MANQUANTE : Récupérer les signalements d'un utilisateur ---
+exports.getUserSignalements = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const sql = `SELECT * FROM signalements WHERE user_id = ? ORDER BY date_signalement DESC`;
+    const [rows] = await db.query(sql, [userId]);
+    res.status(200).json(rows);
+  } catch (error) {
+    console.error("❌ Erreur getUserSignalements:", error.message);
+    res.status(500).json({ error: error.message });
+  }
+};
+
 // 2. Ajouter une validation (Voter)
 exports.validateSignalement = async (req, res) => {
   try {
