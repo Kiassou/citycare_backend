@@ -2,7 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-const MegaService = require("./src/services/megaService");
+const MegaService = require("./services/megaService");
 const authRoutes = require("./routes/authRoutes");
 const signalementRoutes = require("./routes/signalementRoutes");
 const newsRoutes = require("./routes/newsRoutes");
@@ -37,6 +37,3 @@ app.listen(PORT, () =>
   console.log(`🚀 Server CityCare running on port ${PORT}`),
 );
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server CityCare running on port ${PORT}`);
-});
