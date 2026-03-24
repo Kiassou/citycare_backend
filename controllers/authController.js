@@ -278,7 +278,7 @@ exports.getRecentActivities = async (req, res) => {
 
 exports.getUserNotifications = async (req, res) => {
   const userId = req.params.userId;
-  console.log("🚀 getUserNotifications – userId:", userId);
+  console.log("✅ getUserNotifications – userId:", userId);
 
   try {
     const [rows] = await db.query(
@@ -290,8 +290,6 @@ exports.getUserNotifications = async (req, res) => {
         `,
       [userId],
     );
-
-    console.log("✅ getUserNotifications – rows:", rows);
 
     res.status(200).json(rows);
   } catch (err) {
