@@ -6,20 +6,19 @@ const mailer = require("../config/mailer");
 
 // --- 1. INSCRIPTION ---
 exports.register = async (req, res) => {
-  const { nom, prenom, username, telephone, email, password } = req.body;
+ const { nom, prenom, username, telephone, email, password } = req.body;
 
-  try {
-    // Vérifier si l'utilisateur existe déjà
-    const [existingUser] = await db.query(
-      "SELECT * FROM users WHERE email = ? OR username = ?",
-      [email, username],
-    );
+ try {
+  // Vérifier si l'utilisateur existe déjà
+ const [existingUser] = await db.query(
+  "SELECT * FROM users WHERE email = ? OR username = ?",
+   [email, username],
+ );
 
-    if (existingUser.length > 0) {
-      return res
-        .status(400)
-        .json({ message: "L'email ou le nom d'utilisateur est déjà utilisé." });
-    }
+ if (existingUser.length > 0) {
+   return res
+    .status(400)
+  .json({ message: "L'email ou le nom d'utilisateur est déjà utilisé." });  }
 
     // Cryptage du mot de passe
     const salt = await bcrypt.genSalt(10);
@@ -464,3 +463,4 @@ exports.getRecentActivities = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+

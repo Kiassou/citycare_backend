@@ -94,6 +94,8 @@ exports.validateSignalement = async (req, res) => {
         .status(400)
         .json({ message: "Vous avez déjà validé ce signalement" });
     }
+
     res.status(500).json({ error: error.message });
   }
+
 };

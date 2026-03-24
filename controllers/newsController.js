@@ -28,7 +28,28 @@ exports.createNews = async (req, res) => {
   }
 };
 
-// 3. Supprimer une news (CORRIGÉ : passage en async/await)
+// --- 3. MODIFIER UNE NEWS (UPDATE) ---
+exports.updateNews = async (req, res) => {
+  const { id } = req.params;
+  const { title, content } = req.body;
+  let imageUrl = req.body.image_url; // Garder l'ancienne image par défaut
+
+  try {
+    const sql = "UPDATE news SET title = ?, content = ?, image_url = ? WHERE id = ?";
+    const [result] = await db.query(sql, [title, content, imageUrl, id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "News introuvable" });
+    }
+
+    res.json({ message: "Actualité mise à jour", url: imageUrl });
+  } catch (error) {
+    console.error("Erreur UpdateNews:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// 4. Supprimer une news (CORRIGÉ : passage en async/await)
 exports.deleteNews = async (req, res) => {
   const { id } = req.params;
   try {
