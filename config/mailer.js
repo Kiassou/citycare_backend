@@ -1,6 +1,11 @@
+<<<<<<< HEAD
 
 const axios = require("axios");
 const axios = require('axios');
+=======
+const axios = require("axios");
+
+>>>>>>> 5807fb656214626c08593f8974dc42e9580ee6a1
 require("dotenv").config();
 
 const transporter = {
