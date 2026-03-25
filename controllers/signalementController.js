@@ -1,50 +1,51 @@
 const db = require("../config/db");
 const axios = require("axios");
 const FormData = require("form-data");
-const fs = require("fs");
 
-// --- 1. CRÉER UN SIGNALEMENT (AVEC IMGBB) ---
+// --- 1. CRÉER UN SIGNALEMENT (OPTIMISÉ POUR IMGBB & RENDER) ---
 exports.createSignalement = async (req, res) => {
   console.log("📥 Requête reçue pour un nouveau signalement !");
-
+  
   try {
     const { user_id, titre, type_signalement, description, lieu } = req.body;
     let photo_url = null;
 
-    // Si Multer a bien reçu un fichier
+    // Si Multer a bien reçu un fichier en mémoire (buffer)
     if (req.file) {
-      console.log("📸 Envoi de l'image vers ImgBB...");
+      console.log("📸 Image détectée (Buffer), envoi vers ImgBB...");
 
       try {
         const form = new FormData();
-        // On utilise le chemin du fichier temporaire créé par Multer
-        form.append("image", fs.createReadStream(req.file.path));
+        // On envoie le buffer directement à ImgBB
+        form.append("image", req.file.buffer, {
+          filename: req.file.originalname || "upload.jpg",
+          contentType: req.file.mimetype,
+        });
 
         const response = await axios.post(
           `https://api.imgbb.com/1/upload?key=${process.env.IMGBB_API_KEY}`,
           form,
-          { headers: form.getHeaders() },
+          { headers: form.getHeaders() }
         );
 
-        // On récupère l'URL directe d'ImgBB
+        // Récupération de l'URL directe
         photo_url = response.data.data.url;
-        console.log("✅ Image hébergée sur ImgBB :", photo_url);
-
-        // SUPPRESSION du fichier temporaire sur Render pour ne pas remplir le disque
-        fs.unlinkSync(req.file.path);
+        console.log("✅ Image hébergée avec succès :", photo_url);
       } catch (imgError) {
-        console.error("❌ Erreur ImgBB :", imgError.message);
-        // On continue quand même l'insertion en DB, mais sans photo
+        console.error("❌ Erreur lors de l'upload ImgBB :", imgError.response?.data || imgError.message);
+        // On continue l'insertion en base même si l'image échoue
       }
+    } else {
+      console.log("⚠️ Aucun fichier photo reçu dans la requête.");
     }
 
     const sql = `INSERT INTO signalements (user_id, titre, type_signalement, description, photo_url, lieu, statut) 
                  VALUES (?, ?, ?, ?, ?, ?, 'en_attente')`;
 
-    console.log("🛠 Enregistrement en base de données...");
+    console.log("🛠 Enregistrement dans MySQL...");
 
     const [result] = await db.query(sql, [
-      parseInt(user_id) || 1,
+      parseInt(user_id) || null,
       titre,
       type_signalement,
       description,
@@ -52,14 +53,15 @@ exports.createSignalement = async (req, res) => {
       lieu,
     ]);
 
-    console.log("💾 Succès ! ID inséré :", result.insertId);
+    console.log("💾 Signalement créé avec l'ID :", result.insertId);
 
     res.status(201).json({
       success: true,
-      message: "Signalement enregistré sur ImgBB",
+      message: "Signalement enregistré",
       id: result.insertId,
-      photo_url,
+      photo_url: photo_url,
     });
+
   } catch (error) {
     console.error("❌ ERREUR TECHNIQUE :", error.message);
     res.status(500).json({ success: false, error: error.message });
@@ -100,7 +102,7 @@ exports.deleteSignalement = async (req, res) => {
   try {
     const { id } = req.params;
     await db.query("DELETE FROM signalements WHERE id = ?", [id]);
-    res.status(200).json({ success: true, message: "Supprimé" });
+    res.status(200).json({ success: true, message: "Signalement supprimé avec succès" });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -115,7 +117,7 @@ exports.validateSignalement = async (req, res) => {
     res.status(201).json({ success: true, message: "Validation enregistrée" });
   } catch (error) {
     if (error.code === "ER_DUP_ENTRY") {
-      return res.status(400).json({ message: "Déjà validé" });
+      return res.status(400).json({ message: "Vous avez déjà validé ce signalement" });
     }
     res.status(500).json({ error: error.message });
   }
