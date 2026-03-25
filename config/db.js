@@ -1,0 +1,30 @@
+const mysql = require("mysql2");
+require("dotenv").config();
+
+const pool = mysql.createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  port: process.env.DB_PORT,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  // SSL est obligatoire pour Aiven
+  ssl: {
+    rejectUnauthorized: false,
+  },
+});
+
+const db = pool.promise();
+
+db.getConnection()
+  .then((conn) => {
+    console.log("🚀 Nouvelle connexion MySQL réussie ! ✅");
+    conn.release();
+  })
+  .catch((err) => {
+    console.error("❌ Erreur de connexion :", err.message);
+  });
+
+module.exports = db;
