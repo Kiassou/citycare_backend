@@ -1,3 +1,8 @@
+const fs = require('fs');
+if (!fs.existsSync('./uploads/signalements/')){
+    fs.mkdirSync('./uploads/signalements/', { recursive: true });
+}
+
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
