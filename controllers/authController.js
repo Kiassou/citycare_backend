@@ -65,66 +65,73 @@ exports.register = async (req, res) => {
 };
 
 exports.login = async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password } = req.body;
 
-  console.log("🚀 Tentative de connexion pour :", username);
+  console.log("🚀 Tentative de connexion pour :", username);
 
-  try {
-    const result = await db.query("SELECT * FROM users WHERE username = ?", [
-      username,
-    ]);
+  try {
+    const result = await db.query("SELECT * FROM users WHERE username = ?", [
+      username,
+    ]);
 
-    // On extrait les lignes (rows) selon la config de ton driver mysql2
-    const rows = Array.isArray(result[0]) ? result[0] : result;
+    // Extraction des lignes
+    const rows = Array.isArray(result[0]) ? result[0] : result;
 
-    if (!rows || rows.length === 0) {
-      console.log("❌ Utilisateur non trouvé en BDD");
-      return res.status(404).json({ message: "Utilisateur non trouvé" });
+    // 1. On vérifie d'abord si l'utilisateur existe
+    if (!rows || rows.length === 0) {
+      console.log("❌ Utilisateur non trouvé en BDD");
+      return res.status(404).json({ message: "Utilisateur non trouvé" });
+    }
 
-     if (user.is_active === 0) {
+    // 2. ON DÉFINIT 'user' MAINTENANT
+    const user = rows[0];
+
+    // 3. ON VÉRIFIE SI LE COMPTE EST ACTIF (Juste après avoir défini 'user')
+    if (user.is_active === 0) {
+      console.log("🚫 Compte désactivé pour :", user.username);
       return res.status(403).json({ 
-       message: "Votre compte est désactivé. Veuillez contacter l'administration." });
-    }
+        message: "Votre compte est désactivé. Veuillez contacter l'administration." 
+      });
+    }
 
-    // ON DÉFINIT 'user' ICI pour qu'il soit accessible partout dans le bloc try
-    const user = rows[0];
-    console.log(
-      "✅ Utilisateur trouvé :",
-      user.username,
-      " | Rôle :",
-      user.role,
-    );
+    console.log(
+      "✅ Utilisateur trouvé :",
+      user.username,
+      " | Rôle :",
+      user.role,
+    );
 
-    // Comparaison du mot de passe
-    const isMatch = await bcrypt.compare(password.trim(), user.password.trim());
+    // 4. Comparaison du mot de passe
+    const isMatch = await bcrypt.compare(password.trim(), user.password.trim());
 
-    if (!isMatch) {
-      return res.status(401).json({ message: "Mot de passe incorrect" });
-    }
+    if (!isMatch) {
+      return res.status(401).json({ message: "Mot de passe incorrect" });
+    }
 
-    const token = jwt.sign(
-      { id: user.id, role: user.role },
-      process.env.JWT_SECRET || "secret",
-      { expiresIn: "1d" },
-    );
+    // 5. Génération du Token
+    const token = jwt.sign(
+      { id: user.id, role: user.role },
+      process.env.JWT_SECRET || "secret",
+      { expiresIn: "1d" },
+    );
 
-    res.json({
-      message: "Connexion réussie",
-      token,
-      user: {
-        id: user.id,
-        nom: user.nom,
-        prenom: user.prenom,
-        username: user.username,
-        email: user.email,
-        telephone: user.telephone,
-        role: user.role,
-      },
-    });
-  } catch (err) {
-    console.error("🔥 ERREUR SERVEUR :", err);
-    res.status(500).json({ error: "Erreur serveur", details: err.message });
-  }
+    res.json({
+      message: "Connexion réussie",
+      token,
+      user: {
+        id: user.id,
+        nom: user.nom,
+        prenom: user.prenom,
+        username: user.username,
+        email: user.email,
+        telephone: user.telephone,
+        role: user.role,
+      },
+    });
+  } catch (err) {
+    console.error("🔥 ERREUR SERVEUR :", err);
+    res.status(500).json({ error: "Erreur serveur", details: err.message });
+  }
 };
 
 // --- 3. MOT DE PASSE OUBLIÉ ---
