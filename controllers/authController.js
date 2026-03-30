@@ -80,6 +80,10 @@ exports.login = async (req, res) => {
     if (!rows || rows.length === 0) {
       console.log("❌ Utilisateur non trouvé en BDD");
       return res.status(404).json({ message: "Utilisateur non trouvé" });
+
+     if (user.is_active === 0) {
+      return res.status(403).json({ 
+       message: "Votre compte est désactivé. Veuillez contacter l'administration." });
     }
 
     // ON DÉFINIT 'user' ICI pour qu'il soit accessible partout dans le bloc try
