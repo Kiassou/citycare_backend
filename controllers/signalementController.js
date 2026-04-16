@@ -2,21 +2,20 @@ const db = require("../config/db");
 const axios = require("axios");
 const FormData = require("form-data");
 
-// --- 1. CRÉER UN SIGNALEMENT (OPTIMISÉ POUR IMGBB & RENDER) ---
+// --- 1. CRÉER UN SIGNALEMENT (MIS À JOUR AVEC GPS) ---
 exports.createSignalement = async (req, res) => {
   console.log("📥 Requête reçue pour un nouveau signalement !");
   
   try {
-    const { user_id, titre, type_signalement, description, lieu } = req.body;
+    // 1. Récupération des données (On ajoute latitude et longitude ici)
+    const { user_id, titre, type_signalement, description, lieu, latitude, longitude } = req.body;
     let photo_url = null;
 
-    // Si Multer a bien reçu un fichier en mémoire (buffer)
+    // --- LOGIQUE IMGBB (Inchangée) ---
     if (req.file) {
       console.log("📸 Image détectée (Buffer), envoi vers ImgBB...");
-
       try {
         const form = new FormData();
-        // On envoie le buffer directement à ImgBB
         form.append("image", req.file.buffer, {
           filename: req.file.originalname || "upload.jpg",
           contentType: req.file.mimetype,
@@ -28,36 +27,36 @@ exports.createSignalement = async (req, res) => {
           { headers: form.getHeaders() }
         );
 
-        // Récupération de l'URL directe
         photo_url = response.data.data.url;
         console.log("✅ Image hébergée avec succès :", photo_url);
       } catch (imgError) {
         console.error("❌ Erreur lors de l'upload ImgBB :", imgError.response?.data || imgError.message);
-        // On continue l'insertion en base même si l'image échoue
       }
-    } else {
-      console.log("⚠️ Aucun fichier photo reçu dans la requête.");
     }
 
-    const sql = `INSERT INTO signalements (user_id, titre, type_signalement, description, photo_url, lieu, statut) 
-                 VALUES (?, ?, ?, ?, ?, ?, 'en_attente')`;
+    // --- ENREGISTREMENT MYSQL (Mis à jour avec GPS) ---
+    // On ajoute latitude et longitude dans le INSERT
+    const sql = `INSERT INTO signalements (user_id, titre, type_signalement, description, photo_url, lieu, latitude, longitude, statut) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'en_attente')`;
 
-    console.log("🛠 Enregistrement dans MySQL...");
+    console.log("🛠 Enregistrement dans MySQL avec coordonnées GPS...");
 
     const [result] = await db.query(sql, [
       parseInt(user_id) || null,
-      titre,
+      titre || null, // On accepte NULL si tu ne forces pas le titre
       type_signalement,
       description,
       photo_url,
       lieu,
+      latitude || null,  // Nouvelle valeur
+      longitude || null, // Nouvelle valeur
     ]);
 
-    console.log("💾 Signalement créé avec l'ID :", result.insertId);
+    console.log("💾 Signalement créé avec succès (ID: ${result.insertId})");
 
     res.status(201).json({
       success: true,
-      message: "Signalement enregistré",
+      message: "Signalement enregistré avec position GPS",
       id: result.insertId,
       photo_url: photo_url,
     });
